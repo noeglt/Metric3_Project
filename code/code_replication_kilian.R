@@ -15,46 +15,65 @@ library(janitor)
 
 fredr_set_key(Sys.getenv("FRED_API_KEY"))
 
-production = fredr(series_id = "IPG21112S", 
-                              observation_start = as.Date("1973-01-01"),
-                              observation_end   = as.Date("2026-02-02"))
+production = fredr(
+  series_id = "IPG21112S", 
+  observation_start = as.Date("1973-01-01"),
+  observation_end   = as.Date("2026-02-02")
+  )
 
-index = fredr(series_id = "IGREA", 
-                     observation_start = as.Date("1973-01-01"),
-                     observation_end   = as.Date("2026-02-02"))
+index = fredr(
+  series_id = "IGREA", 
+  observation_start = as.Date("1973-01-01"),
+  observation_end   = as.Date("2026-02-02")
+  )
 
-price = read.csv("U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
+price = read.csv("data/U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
 
 #LLM helped for the data cleaning
 
-price = price %>%
-  slice(5:n()) %>%
+price = price |>
+  slice(5:n()) |>
   select(Month = 1, Cost = 2)
 
-price = price %>%
+price = price |>
   mutate(
     Month = myd(paste(Month, "01")), 
     Cost = as.numeric(Cost)
-  ) %>%
-  arrange(Month) %>% 
+  ) |>
+  arrange(Month) |> 
   rename(date = Month)
 
+df_main <- left_join(price, index, by = "date") |>
+  rename(index = value) |>
+  left_join(production, by = "date") |>
+  rename(prod = value) |>
+  select(date, index, prod, Cost) |>
+  mutate(
+    cost = log(Cost),
+    growth_prod = (log(prod) - log(lag(prod)))*100
+  ) |>
+  filter(!is.na(growth_prod)) |>
+  select(cost, date, index, growth_prod)
 
-df <- left_join(price, index, by = "date")
+#Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
 
-df <- df %>% rename(index = value)
+cpi = fredr(
+  series_id = "CPIAUCSL",
+  observation_start = as.Date("1973-01-01")
+)
 
-df <- left_join(df, production, by = "date")
+cpi <- cpi |>
+  select(date, cpi = value)
 
-df <- df %>% rename(prod = value)
+df_main <- df_main |>
+  left_join(cpi, by = "date") |>
+  mutate(
+    real_price = cost / cpi,
+    log_real_price = log(real_price))
 
-df <- df %>% select(date, index, prod, Cost)
+df_SVAR <- df_main |>
+  select(date, log_real_price, growth_prod) 
 
-df <- df %>% mutate(cost = log(Cost)) %>% 
-  mutate(growth_prod = (prod - lag(prod)) / lag(prod)
-  ) %>% filter(!is.na(growth_prod))
-
-df <- df %>% select(cost, date, index, growth_prod)
 
 #Visualize the series-------------------------------------------------------
 
