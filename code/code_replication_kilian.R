@@ -267,6 +267,7 @@ Sigma_u <- crossprod(u_hat) / nrow(u_hat)
 A0_inv <- t(chol(Sigma_u))
 
 eps_hat <- t(solve(A0_inv, t(u_hat)))
+eps_hat <- scale(eps_hat)
 eps_hat <- as.data.frame(eps_hat)
 
 colnames(eps_hat) <- c(
@@ -316,6 +317,17 @@ abline(h = 0, col = "gray")
 par(mfrow = c(1, 1))
 
 # 10. Granger causality (extension) -------------------------------------------
+granger_test_prod <- causality(var_ordered, cause = "growth_prod")
+print(granger_test_prod$Granger)
+
+granger_test_index <- causality(var_ordered, cause = "index")
+print(granger_test_index$Granger)
+
+granger_test_price <- causality(var_ordered, cause = "growth_real_price")
+print(granger_test$Granger)
+
+
+
 
 
 
