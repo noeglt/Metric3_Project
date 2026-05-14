@@ -94,13 +94,6 @@ df_SVAR <- df_main |>
 ggplot(data = df_SVAR, aes(x = date))+
   geom_line(aes(y = log_real_price)) + 
   geom_line(aes(y = growth_prod))
-
-p <- ggplot(df_SVAR, aes(x = date)) +
-  geom_line(aes(y = log_real_price), color = "steelblue") +
-  geom_line(aes(y = growth_prod), color = "firebrick")
-
-print(p)
-
 #Stationarity tests----------------------------------------------------
 
 dfbis <- df_SVAR %>% select(!date)
@@ -262,6 +255,7 @@ irf_oild <- cumulate_irf(irf_oild, "growth_real_price", c("growth_prod", "growth
 
 
 plot(irf_oild, main = "Impulse Response to a shock in growth_real_price", xlab = "Months", ylab = "Response")
+
 
 
 
