@@ -92,8 +92,9 @@ df_SVAR <- df_main |>
 #Visualize the series-------------------------------------------------------
 
 ggplot(data = df_SVAR, aes(x = date))+
-  geom_line(aes(y = log_real_price)) + 
+  geom_line(aes(y = log_real_price)) +  #To be improved with ggplot2 later on
   geom_line(aes(y = growth_prod))
+
 #Stationarity tests----------------------------------------------------
 
 dfbis <- df_SVAR %>% select(!date)
@@ -257,8 +258,6 @@ irf_oild <- cumulate_irf(irf_oild, "growth_real_price", c("growth_prod", "growth
 plot(irf_oild, main = "Impulse Response to a shock in growth_real_price", xlab = "Months", ylab = "Response")
 
 
-
-
 # 9. Forecast Error Variance Decomposition ------------------------------------
 
 # Reduced-form residuals from the ordered VAR
@@ -325,9 +324,4 @@ print(granger_test_index$Granger)
 
 granger_test_price <- causality(var_ordered, cause = "growth_real_price")
 print(granger_test$Granger)
-
-
-
-
-
 
