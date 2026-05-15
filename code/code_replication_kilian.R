@@ -39,7 +39,7 @@ df_clean2 <- df_clean2 %>%
   ) %>%
   arrange(date)
 
-  df_clean2 <- df_clean2 %>%rename(prod = value)
+df_clean2 <- df_clean2 %>%rename(prod = value)
 
 
 price = read.csv("data/U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
@@ -64,8 +64,7 @@ df_main <- left_join(price, kilian, by = "date") |>
   left_join(df_clean2, by = "date") |>
   select(date, index, prod, Cost) |>
   mutate(
-    growth_prod = (log(prod) - log(lag(prod)))*100,
-        indexbis = index / 100) 
+  growth_prod = (log(prod) - log(lag(prod)))*100) 
 
 #Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
 
@@ -81,8 +80,11 @@ df_main <- df_main |>
   left_join(cpi, by = "date")
 
 df_main <- df_main|>
-  mutate( real_price = Cost / cpi,
-  log_real_price = log(real_price)) 
+  mutate( real_price = (Cost / cpi)*100,
+  log_real_price = log(real_price))
+
+ggplot(data = df_main, aes(x = date))+
+  geom_line(aes(y = real_price))
 
 
 df_SVAR <- df_main |>
@@ -92,8 +94,7 @@ df_SVAR <- df_main |>
 #Visualize the series-------------------------------------------------------
 
 ggplot(data = df_SVAR, aes(x = date))+
-  geom_line(aes(y = log_real_price)) +  #To be improved with ggplot2 later on
-  geom_line(aes(y = growth_prod))
+  geom_line(aes(y = log_real_price))
 
 #Stationarity tests----------------------------------------------------
 
@@ -121,43 +122,6 @@ for (j in seq_along(colnames(dfbis))) {               # Loop over 3 variables
 }
 print(ur_tbl)
 
-#Due to non-stationarity, we have to difference the series.
-
-df_stat <- df_main |> 
-  mutate(
-    growth_real_price = (log_real_price - lag(log_real_price))*100
-  ) |>
-  filter(!is.na(growth_real_price)) |>
-  filter(date < as.Date("2008-01-01")) |> 
-  select(growth_real_price, date, growth_prod, index)
-
-
-
-
-df_stat_bis <- df_stat %>% select(!date)
-
-ur_tbl_stat <- data.frame(                                  # Empty container
-  variable   = colnames(df_stat_bis),
-  pp_stat    = NA_real_, pp_pval   = NA_real_,
-  dfgls_stat = NA_real_, dfgls_cv5 = NA_real_,
-  kpss_stat  = NA_real_, kpss_pval = NA_real_
-)
-for (j in seq_along(colnames(df_stat_bis))) {               # Loop over 3 variables
-  y <- df_stat_bis[, j]                                     # Pick the j-th series
-  
-  pp  <- pp.test(y, alternative = "stationary")        # Phillips-Perron
-  ers <- ur.ers(y, type = "DF-GLS", model = "constant")# DF-GLS (ERS 1996)
-  kp  <- kpss.test(y, null = "Level")                  # KPSS (null: stationary)
-  
-  ur_tbl_stat$pp_stat[j]    <- unname(pp$statistic)         # Store PP stat / p-value
-  ur_tbl_stat$pp_pval[j]    <- pp$p.value
-  ur_tbl_stat$dfgls_stat[j] <- as.numeric(ers@teststat)     # Uses 5% crit. val.
-  ur_tbl_stat$dfgls_cv5[j]  <- ers@cval[, "5pct"]
-  ur_tbl_stat$kpss_stat[j]  <- unname(kp$statistic)         # KPSS stat / p-value
-  ur_tbl_stat$kpss_pval[j]  <- kp$p.value
-}
-print(ur_tbl_stat)
-
 # Three complementary tests:
 #   PP     (Phillips-Perron): H0 = unit root. Like ADF but uses a
 #          nonparametric correction for autocorrelation and
@@ -172,11 +136,9 @@ print(ur_tbl_stat)
 # for a unit root is strong. If they disagree, the picture is mixed.
 # Flag it in the diary and sanity-check with differencing.
 
-#We have to start with differencing
-
 # 5. Lag order selection -------------------------------------------------------
 
-lag_sel <- VARselect(df_stat_bis, lag.max = 24, type = "const")
+lag_sel <- VARselect(dfbis, lag.max = 24, type = "const")
 print(lag_sel$selection)
 print(lag_sel$criteria)
 
@@ -188,7 +150,7 @@ cat("  Other criteria: AIC =", lag_sel$selection["AIC(n)"],
     ", BIC =", lag_sel$selection["SC(n)"],
     ", FPE =", lag_sel$selection["FPE(n)"], "\n")
 
-var_fit <- VAR(df_stat_bis, p = p_star, type = "const")  # Estimate VAR(p) by OLS
+var_fit <- VAR(dfbis, p = 24, type = "const")  # Estimate VAR(p) by OLS
 summary(var_fit)                                    # Coefficients + res. stats
 
 
@@ -209,53 +171,101 @@ print(nm_test$jb.mul)
 
 # 8. Impulse Response Functions ------------------------------------------------
 
+df_ordered = dfbis[, c("growth_prod", "index", "log_real_price")]
+var_ordered <- VAR(df_ordered, p =24, type = "const")  # Re-estimate with ordered vars
 
-cumulate_irf <- function(irf_obj, impulse_var, vars_to_cumsum) {
-  for (v in vars_to_cumsum) {
-    irf_obj$irf[[impulse_var]][, v]   <- cumsum(irf_obj$irf[[impulse_var]][, v])
-    irf_obj$Lower[[impulse_var]][, v] <- cumsum(irf_obj$Lower[[impulse_var]][, v])
-    irf_obj$Upper[[impulse_var]][, v] <- cumsum(irf_obj$Upper[[impulse_var]][, v])
+
+# 3x3 IRFs ---------------------------------------------------
+
+H <- 18
+vars <- c("growth_prod", "index", "log_real_price")
+
+shock_names <- c(
+  growth_prod = "Oil supply shock",
+  index = "Aggregate demand shock",
+  log_real_price = "Oil-specific demand shock"
+)
+
+ylabs <- c(
+  growth_prod = "Oil production",
+  index = "Real activity",
+  log_real_price = "Real price of oil"
+)
+
+# Compute IRFs once per shock
+irf_68 <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
+                               n.ahead = H, boot = TRUE, ci = 0.68, runs = 100))
+irf_95 <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
+                               n.ahead = H, boot = TRUE, ci = 0.95, runs = 100))
+
+names(irf_68) <- vars
+names(irf_95) <- vars
+
+plot_panel <- function(shock, response) {
+  
+  y  <- irf_68[[shock]]$irf[[shock]][, response]
+  l1 <- irf_68[[shock]]$Lower[[shock]][, response]
+  u1 <- irf_68[[shock]]$Upper[[shock]][, response]
+  l2 <- irf_95[[shock]]$Lower[[shock]][, response]
+  u2 <- irf_95[[shock]]$Upper[[shock]][, response]
+  
+  # Supply shock in Kilian = negative production shock
+  if (shock == "growth_prod") {
+    y  <- -y
+    old_l1 <- l1; l1 <- -u1; u1 <- -old_l1
+    old_l2 <- l2; l2 <- -u2; u2 <- -old_l2
   }
-  return(irf_obj)
+
+if (response == "growth_prod") {
+  y  <- cumsum(y)
+  l1 <- cumsum(l1)
+  u1 <- cumsum(u1)
+  l2 <- cumsum(l2)
+  u2 <- cumsum(u2)
 }
 
-df_ordered = df_stat_bis[, c("growth_prod", "index", "growth_real_price")]
-var_ordered <- VAR(df_ordered, p =p_star, type = "const")  # Re-estimate with ordered vars
+
+  # Log price response -> percent response
+  if (response == "log_real_price") {
+    y  <- 100 * y
+    l1 <- 100 * l1
+    u1 <- 100 * u1
+    l2 <- 100 * l2
+    u2 <- 100 * u2
+  }
+  
+  x <- 0:H
+  
+  plot(x, y, type = "l", lwd = 2,
+       main = unname(shock_names[shock]),
+       ylab = unname(ylabs[response]),
+       xlab = "",
+       ylim = range(c(y, l1, u1, l2, u2), na.rm = TRUE))
+  
+  abline(h = 0, col = "gray")
+  lines(x, l1, lty = 2)
+  lines(x, u1, lty = 2)
+  lines(x, l2, lty = 3)
+  lines(x, u2, lty = 3)
+}
+
+par(mfrow = c(3, 3), mar = c(3, 4, 3, 1))
+
+for (shock in vars) {
+  for (response in vars) {
+    plot_panel(shock, response)
+  }
+}
+
+par(mfrow = c(1, 1))
 
 
-#IRF positive shock in growth_prod-----------------------------------
-
-irf_supply <- irf(var_ordered, impulse = "growth_prod", response = c("growth_prod", "index", "growth_real_price"),
-n.ahead = 18, boot = TRUE, ci = 0.95)
-irf_supply <- cumulate_irf(irf_supply, "growth_prod", c("growth_prod", "growth_real_price"))
+#fix attempt for widening CIs
 
 
-plot(irf_supply, main = "Impulse Response to a shock in growth_prod", xlab = "Months", ylab = "Response")
-
-# IRF for a negative shock in growth_prod (as in Kilian 2009)---------
 
 
-# AD shock
 
-var_ordered <- VAR(df_ordered, p = p_star, type = "const")  # Re-estimate with ordered vars
-
-irf_ad <- irf(var_ordered, impulse = "index", response = c("growth_prod", "index", "growth_real_price"),
-n.ahead = 18, boot = TRUE, ci = 0.95)
-irf_ad <- cumulate_irf(irf_ad, "index", c("growth_prod", "growth_real_price"))
-
-plot(irf_ad, main = "Impulse Response to a shock in index", xlab = "Months", ylab = "Response")
-
-
-# OIl-specific demand shock
-
-var_ordered <- VAR(df_ordered, p = p_star, type = "const")  # Re-estimate with ordered vars
-
-irf_oild <- irf(var_ordered, impulse = "growth_real_price", response = c("growth_prod", "index", "growth_real_price"),
-n.ahead = 18, boot = TRUE, ci = 0.95)
-irf_oild <- cumulate_irf(irf_oild, "growth_real_price", c("growth_prod", "growth_real_price"))
-
-
-plot(irf_oild, main = "Impulse Response to a shock in growth_real_price", xlab = "Months", ylab = "Response")
 
 
 # 9. Forecast Error Variance Decomposition ------------------------------------
