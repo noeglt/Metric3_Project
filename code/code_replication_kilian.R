@@ -13,9 +13,14 @@ library(tidyverse)
 library(svars)
 library(httr)
 library(jsonlite)
+library(httpgd)
+library(Cairo)
 
 
 #Data loading and basic cleaning-------------------------------------------------------------------------------
+
+
+hgd()
 
 fredr_set_key(Sys.getenv("FRED_API_KEY"))
 
@@ -164,7 +169,16 @@ print(sc_test)
 nm_test <- normality.test(var_fit, multivariate.only = TRUE)
 print(nm_test$jb.mul)
 
+
+
+
+
+
+
 # 8. Impulse Response Functions ------------------------------------------------
+
+
+
 
 df_ordered = dfbis[, c("growth_prod", "index", "log_real_price")]
 var_ordered <- VAR(df_ordered, p =24, type = "const")  # Re-estimate with ordered vars
@@ -187,15 +201,15 @@ ylabs <- c(
 
 # 1. Compute Standard IRFs (for Index and Price)
 irf_68_std <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
-                                    n.ahead = H, boot = TRUE, ci = 0.68, runs = 200, cumulative = FALSE))
+                                    n.ahead = H, boot = TRUE, ci = 0.68, runs = 100, cumulative = FALSE))
 irf_95_std <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
-                                    n.ahead = H, boot = TRUE, ci = 0.95, runs = 200, cumulative = FALSE))
+                                    n.ahead = H, boot = TRUE, ci = 0.95, runs = 100, cumulative = FALSE))
 
 # 2. Compute Cumulative IRFs (for Production ONLY)
 irf_68_cum <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
-                                    n.ahead = H, boot = TRUE, ci = 0.68, runs = 200, cumulative = TRUE))
+                                    n.ahead = H, boot = TRUE, ci = 0.68, runs = 100, cumulative = TRUE))
 irf_95_cum <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
-                                    n.ahead = H, boot = TRUE, ci = 0.95, runs = 200, cumulative = TRUE))
+                                    n.ahead = H, boot = TRUE, ci = 0.95, runs = 100, cumulative = TRUE))
 
 names(irf_68_std) <- vars; names(irf_95_std) <- vars
 names(irf_68_cum) <- vars; names(irf_95_cum) <- vars
@@ -251,6 +265,9 @@ plot_panel <- function(shock, response) {
   lines(x, u2, lty = 3)
 }
 
+CairoPNG("irf_plots.png", width = 900, height = 500, res = 132) #to make it look as R studio output 
+
+
 par(mfrow = c(3, 3), mar = c(3, 4, 3, 1))
 
 for (shock in vars) {
@@ -261,9 +278,7 @@ for (shock in vars) {
 
 par(mfrow = c(1, 1))
 
-
-
-
+dev.off()
 
 
 
