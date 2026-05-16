@@ -1,3 +1,19 @@
+install.packages(c(
+  "fredr",
+  "vars",
+  "tseries",
+  "urca",
+  "ggplot2",
+  "dplyr",
+  "tidyr",
+  "lubridate",
+  "janitor",
+  "readr",
+  "tidyverse",
+  "svars",
+  "Cairo"
+))
+
 library(fredr)       
 library(vars)        
 library(tseries)     
@@ -13,12 +29,9 @@ library(tidyverse)
 library(svars)
 library(Cairo)
 
-
 #Data loading and basic cleaning-------------------------------------------------------------------------------
 
-
 fredr_set_key(Sys.getenv("FRED_API_KEY"))
-
 
 kilian = fredr(
   series_id = "IGREA", 
@@ -26,25 +39,24 @@ kilian = fredr(
   observation_end   = as.Date("2026-02-02")
 )
 
-plot(kilian$date, kilian$value, type = "l")
-
 df_clean2 <- read_csv("data/Crude_prod_TS.csv")
 
 df_clean2 <- df_clean2 |>
   select("...5", "...6")
 
-df_clean2 <- df_clean2 %>%
+df_clean2 <- df_clean2 |>
   slice(-(1:4))
 
-df_clean2 <- df_clean2 %>%
-  rename(date = "...5", value = "...6") %>%
+df_clean2 <- df_clean2 |>
+  rename(date = "...5", value = "...6") |>
   mutate(
     date = ym(date),
     value = as.numeric(value)
-  ) %>%
+  ) |>
   arrange(date)
 
-df_clean2 <- df_clean2 %>%rename(prod = value)
+df_clean2 <- df_clean2 |>
+  rename(prod = value)
 
 
 price = read.csv("data/U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
@@ -70,6 +82,7 @@ df_main <- left_join(price, kilian, by = "date") |>
   select(date, index, prod, Cost) |>
   mutate(
   growth_prod = (log(prod) - log(lag(prod)))*100*12) 
+#Multiply by 12 since Kilian uses annualized growth rates 
 
 #Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
 
@@ -97,7 +110,10 @@ df_SVAR <- df_main |>
   filter(date < as.Date("2008-01-01")) |> 
   filter(!is.na(growth_prod))
 
+#Recover the std of the initial Kilian's series (std normalized to 1 from fred)
 df_SVAR <- df_SVAR |> mutate(index = index * (24.08 / sd(index, na.rm = TRUE)))
+
+
 #Visualize the series-------------------------------------------------------
 
 ggplot(data = df_SVAR, aes(x = date))+
@@ -279,10 +295,6 @@ par(mfrow = c(1, 1))
 dev.off()
 
 
-
-
-
-
 # 9. Forecast Error Variance Decomposition ------------------------------------
 
 # Reduced-form residuals from the ordered VAR
@@ -338,3 +350,42 @@ plot(eps_hat_annual$year, eps_hat_annual$`Oil-specific demand shock`,
 abline(h = 0, col = "gray")
 
 par(mfrow = c(1, 1))
+
+
+
+
+
+# Plot annual structural shocks -----------------------------------------
+
+
+png("structural_shocks.png", width = 900, height = 700, res = 132)
+
+par(mfrow = c(3, 1), mar = c(2.5, 4, 2.5, 1), oma = c(1, 0, 0, 0))
+
+shocks <- c("Oil supply shock", "Aggregate demand shock", "Oil-specific demand shock")
+
+x_range <- range(eps_hat_annual$year)  # should be 1975–2007
+x_lim   <- c(1975, max(eps_hat_annual$year))
+y_lim   <- c(-1, 1)
+
+for (shock in shocks) {
+  # Empty plot first so abline renders behind the line
+  plot(eps_hat_annual$year, eps_hat_annual[[shock]],
+       type = "n",                  # draw nothing yet
+       main = shock,
+       xlab = "", ylab = "",
+       xlim = x_lim,
+       ylim = y_lim,
+       xaxs = "i",
+       yaxs = "i",                  # axis starts exactly at xlim (no padding)
+       las  = 1,                    # horizontal y-axis labels
+       tcl  = -0.3,                 # shorter tick marks
+       mgp  = c(2, 0.5, 0))        # tighten axis label spacing
+
+  abline(h = 0, col = "gray", lwd = 0.8)   # gray zero line behind data
+  lines(eps_hat_annual$year, eps_hat_annual[[shock]], lwd = 1)
+}
+
+par(mfrow = c(1, 1))
+
+dev.off()
