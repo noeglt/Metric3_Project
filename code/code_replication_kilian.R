@@ -11,16 +11,11 @@ library(lubridate)
 library(readr)
 library(tidyverse)
 library(svars)
-library(httr)
-library(jsonlite)
-library(httpgd)
 library(Cairo)
 
 
 #Data loading and basic cleaning-------------------------------------------------------------------------------
 
-
-hgd()
 
 fredr_set_key(Sys.getenv("FRED_API_KEY"))
 
@@ -74,7 +69,7 @@ df_main <- left_join(price, kilian, by = "date") |>
   left_join(df_clean2, by = "date") |>
   select(date, index, prod, Cost) |>
   mutate(
-  growth_prod = (log(prod) - log(lag(prod)))*100) 
+  growth_prod = (log(prod) - log(lag(prod)))*100*12) 
 
 #Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
 
@@ -98,17 +93,17 @@ ggplot(data = df_main, aes(x = date))+
 
 
 df_SVAR <- df_main |>
-  select(date, log_real_price, growth_prod, index) %>%  #change 1
+  select(date, log_real_price, growth_prod, index) |>  
   filter(date < as.Date("2008-01-01")) |> 
   filter(!is.na(growth_prod))
+
+df_SVAR <- df_SVAR |> mutate(index = index * (24.08 / sd(index, na.rm = TRUE)))
 #Visualize the series-------------------------------------------------------
 
 ggplot(data = df_SVAR, aes(x = date))+
   geom_line(aes(y = log_real_price))
 
 #Stationarity tests----------------------------------------------------
-
-df_SVAR <- df_SVAR |> mutate(index = index / sd(index, na.rm = TRUE))
 
 
 dfbis <- df_SVAR %>% select(!date)
@@ -177,9 +172,6 @@ print(nm_test$jb.mul)
 
 # 8. Impulse Response Functions ------------------------------------------------
 
-
-
-
 df_ordered = dfbis[, c("growth_prod", "index", "log_real_price")]
 var_ordered <- VAR(df_ordered, p =24, type = "const")  # Re-estimate with ordered vars
 
@@ -214,6 +206,11 @@ irf_95_cum <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
 names(irf_68_std) <- vars; names(irf_95_std) <- vars
 names(irf_68_cum) <- vars; names(irf_95_cum) <- vars
 
+ylim_fixed <- list(
+  growth_prod    = c(-25, 15),
+  index          = c(-5,  10),
+  log_real_price = c(-7,  12)
+)
 
 plot_panel <- function(shock, response) {
   
@@ -255,8 +252,9 @@ plot_panel <- function(shock, response) {
   plot(x, y, type = "l", lwd = 2,
        main = unname(shock_names[shock]),
        ylab = unname(ylabs[response]),
-       xlab = "",
-       ylim = range(c(y, l1, u1, l2, u2), na.rm = TRUE))
+       xlab =  if (shock == "log_real_price") "Months" else "",
+       xaxs = "i",
+       ylim = ylim_fixed[[response]])
   
   abline(h = 0, col = "gray")
   lines(x, l1, lty = 2)
@@ -265,10 +263,10 @@ plot_panel <- function(shock, response) {
   lines(x, u2, lty = 3)
 }
 
-CairoPNG("irf_plots.png", width = 900, height = 500, res = 132) #to make it look as R studio output 
+png("irf_plots.png", width = 900, height = 700, res = 132) #to make it look as R studio output 
+#We may use CairoPNG() instead
 
-
-par(mfrow = c(3, 3), mar = c(3, 4, 3, 1))
+par(mfrow = c(3, 3), mar = c(4, 4, 3, 1))
 
 for (shock in vars) {
   for (response in vars) {
@@ -279,12 +277,6 @@ for (shock in vars) {
 par(mfrow = c(1, 1))
 
 dev.off()
-
-
-
-
-
-
 
 
 
@@ -346,14 +338,3 @@ plot(eps_hat_annual$year, eps_hat_annual$`Oil-specific demand shock`,
 abline(h = 0, col = "gray")
 
 par(mfrow = c(1, 1))
-
-# 10. Granger causality (extension) -------------------------------------------
-granger_test_prod <- causality(var_ordered, cause = "growth_prod")
-print(granger_test_prod$Granger)
-
-granger_test_index <- causality(var_ordered, cause = "index")
-print(granger_test_index$Granger)
-
-granger_test_price <- causality(var_ordered, cause = "growth_real_price")
-print(granger_test$Granger)
-
