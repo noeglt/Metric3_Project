@@ -399,16 +399,23 @@ ylim_fixed <- list(
 
 plot_panel <- function(shock, response,period=c("7385","8607","0825")) {
   if(period =="7385"){
-    irf_68<-irf_68_7385
-    irf_95<-irf_95_7385}
+    irf_68_std<-irf_68_std_7385
+    irf_95_std <-irf_95_std_7385
+    irf_68_cum<-irf_68_cum_7385
+    irf_95_cum <-irf_95_cum_7385 }
 
   if(period =="8607"){
-    irf_68<-irf_68_8607
-    irf_95<-irf_95_8607}
+    irf_68_std <- irf_68_std_8607
+    irf_95_std <- irf_95_std_8607
+    irf_68_cum <- irf_68_cum_8607
+    irf_95_cum <- irf_95_cum_8607}
   
   if(period =="0825"){
-    irf_68<-irf_68_0825
-    irf_95<-irf_95_0825}
+    irf_68_std <- irf_68_std_0825
+    irf_95_std <- irf_95_std_0825
+    
+    irf_68_cum <- irf_68_cum_0825
+    irf_95_cum <- irf_95_cum_0825}
 
   if (response == "growth_prod") {
     obj_68 <- irf_68_cum
@@ -418,11 +425,12 @@ plot_panel <- function(shock, response,period=c("7385","8607","0825")) {
     obj_95 <- irf_95_std
   }
   
-  y  <- irf_68[[shock]]$irf[[shock]][, response]
-  l1 <- irf_68[[shock]]$Lower[[shock]][, response]
-  u1 <- irf_68[[shock]]$Upper[[shock]][, response]
-  l2 <- irf_95[[shock]]$Lower[[shock]][, response]
-  u2 <- irf_95[[shock]]$Upper[[shock]][, response]
+  y <- obj_68[[shock]]$irf[[shock]][, response]
+  l1 <- obj_68[[shock]]$Lower[[shock]][, response]
+  u1 <- obj_68[[shock]]$Upper[[shock]][, response]
+  l2 <- obj_95[[shock]]$Lower[[shock]][, response]
+  u2 <- obj_95[[shock]]$Upper[[shock]][, response]
+  
 
   # Supply shock in Kilian = negative production shock
   if (shock == "growth_prod") {
