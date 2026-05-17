@@ -106,9 +106,6 @@ df_0825 <- df_SVAR %>%
 
 #Visualize the series-------------------------------------------------------
 
-ggplot(data = df_SVAR, aes(x = date))+
-  geom_line(aes(y = log_real_price))
-
 ggplot(data = df_7385, aes(x = date))+
   geom_line(aes(y = log_real_price))
 
@@ -120,30 +117,6 @@ ggplot(data = df_0825, aes(x = date))+
 
 #Stationarity tests----------------------------------------------------
 
-dfbis <- df_SVAR %>% select(!date)
-
-ur_tbl <- data.frame(                                  # Empty container
-  variable   = colnames(dfbis),
-  pp_stat    = NA_real_, pp_pval   = NA_real_,
-  dfgls_stat = NA_real_, dfgls_cv5 = NA_real_,
-  kpss_stat  = NA_real_, kpss_pval = NA_real_
-)
-for (j in seq_along(colnames(dfbis))) {               # Loop over 3 variables
-  y <- dfbis[, j]                                     # Pick the j-th series
-  
-  pp  <- pp.test(y, alternative = "stationary")        # Phillips-Perron
-  ers <- ur.ers(y, type = "DF-GLS", model = "constant")# DF-GLS (ERS 1996)
-  kp  <- kpss.test(y, null = "Level")                  # KPSS (null: stationary)
-  
-  ur_tbl$pp_stat[j]    <- unname(pp$statistic)         # Store PP stat / p-value
-  ur_tbl$pp_pval[j]    <- pp$p.value
-  ur_tbl$dfgls_stat[j] <- as.numeric(ers@teststat)     # Uses 5% crit. val.
-  ur_tbl$dfgls_cv5[j]  <- ers@cval[, "5pct"]
-  ur_tbl$kpss_stat[j]  <- unname(kp$statistic)         # KPSS stat / p-value
-  ur_tbl$kpss_pval[j]  <- kp$p.value
-}
-print(ur_tbl)
-
 # =========================
 # 1973-1985
 # =========================
@@ -154,8 +127,7 @@ ur_tbl_7385 <- data.frame(
   variable   = colnames(dfbis_7385),
   pp_stat    = NA_real_, pp_pval   = NA_real_,
   dfgls_stat = NA_real_, dfgls_cv5 = NA_real_,
-  kpss_stat  = NA_real_, kpss_pval = NA_real_
-)
+  kpss_stat  = NA_real_, kpss_pval = NA_real_)
 
 for (j in seq_along(colnames(dfbis_7385))) {
   
@@ -256,10 +228,6 @@ print(ur_tbl_0825)
 # Flag it in the diary and sanity-check with differencing.
 
 # 5. Lag order selection -------------------------------------------------------
-is.na(dfbis)
-lag_sel <- VARselect(dfbis, lag.max = 24, type = "const")
-print(lag_sel$selection)
-print(lag_sel$criteria)
 
 lag_sel_7385 <- VARselect(dfbis_7385, lag.max = 24, type = "const")
 print(lag_sel_7385$selection)
@@ -274,15 +242,6 @@ print(lag_sel_0825$selection)
 print(lag_sel_0825$criteria)
 
 # 6. Estimate the VAR ----------------------------------------------------------
-
-p_star <- as.integer(lag_sel$selection["HQ(n)"])
-cat("VAR lag order selected by HQ: p =", p_star, "\n")
-cat("  Other criteria: AIC =", lag_sel$selection["AIC(n)"],
-    ", BIC =", lag_sel$selection["SC(n)"],
-    ", FPE =", lag_sel$selection["FPE(n)"], "\n")
-
-var_fit <- VAR(dfbis, p = 24, type = "const")  # Estimate VAR(p) by OLS
-summary(var_fit)                                    # Coefficients + res. stats
 
 p_star_7385  <- as.integer(lag_sel_7385$selection["HQ(n)"])
 cat("VAR lag order selected by HQ: p =", p_star, "\n")
@@ -312,13 +271,10 @@ cat("  Other criteria: AIC =", lag_sel_0825$selection["AIC(n)"],
 var_fit_0825 <- VAR(dfbis_0825, p = 24, type = "const")  # Estimate VAR(p) by OLS
 summary(var_fit_0825)                                    # Coefficients + res. stats
 
-
 # 7. Stability & residual diagnostics ------------------------------------------
 
 
 # (a) Stability: all eigenvalues of the companion matrix should lie inside the unit circle.
-roots_mod <- roots(var_fit, modulus = TRUE)
-cat("Max modulus of companion roots:", round(max(roots_mod), 3), "\n")
 
 roots_mod_7385  <- roots(var_fit_7385, modulus = TRUE)
 cat("Max modulus of companion roots:", round(max(roots_mod_7385), 3), "\n")
@@ -330,8 +286,6 @@ roots_mod_0825 <- roots(var_fit_0825, modulus = TRUE)
 cat("Max modulus of companion roots:", round(max(roots_mod_0825), 3), "\n")
 
 # (b) Serial correlation: Portmanteau / Breusch-Godfrey (H0: no autocorr.)
-sc_test <- serial.test(var_fit, lags.pt = 36, type = "PT.asymptotic")
-print(sc_test)
 
 sc_test_7385   <- serial.test(var_fit_7385, lags.pt = 36, type = "PT.asymptotic")
 print(sc_test_7385)
@@ -343,8 +297,6 @@ sc_test_0825  <- serial.test(var_fit_0825, lags.pt = 36, type = "PT.asymptotic")
 print(sc_test_0825)
 
 # (c) Normality of residuals (Jarque-Bera multivariate, H0: normal errors)
-nm_test <- normality.test(var_fit, multivariate.only = TRUE)
-print(nm_test$jb.mul)
 
 nm_test_7385 <- normality.test(var_fit_7385, multivariate.only = TRUE)
 print(nm_test_7385$jb.mul)
@@ -356,9 +308,6 @@ nm_test_0825 <- normality.test(var_fit_0825, multivariate.only = TRUE)
 print(nm_test_0825$jb.mul)
 
 # 8. Impulse Response Functions ------------------------------------------------
-
-df_ordered = dfbis[, c("growth_prod", "index", "log_real_price")]
-var_ordered <- VAR(df_ordered, p =24, type = "const")  # Re-estimate with ordered vars
 
 df_ordered_7385 = dfbis_7385[, c("growth_prod", "index", "log_real_price")]
 var_ordered_7385 <- VAR(df_ordered_7385, p =24, type = "const")  # Re-estimate with ordered vars
@@ -550,19 +499,6 @@ par(mfrow = c(1, 1))
 # 9. Forecast Error Variance Decomposition ------------------------------------
 
 # Reduced-form residuals from the ordered VAR
-u_hat <- residuals(var_ordered)
-Sigma_u <- crossprod(u_hat) / nrow(u_hat)
-A0_inv <- t(chol(Sigma_u))
-
-eps_hat <- t(solve(A0_inv, t(u_hat)))
-eps_hat <- scale(eps_hat)
-eps_hat <- as.data.frame(eps_hat)
-
-colnames(eps_hat) <- c(
-  "Oil supply shock",
-  "Aggregate demand shock",
-  "Oil-specific demand shock"
-)
 
 u_hat_7385 <- residuals(var_ordered_7385)
 Sigma_u_7385 <- crossprod(u_hat_7385) / nrow(u_hat_7385)
@@ -608,8 +544,6 @@ colnames(eps_hat_0825) <- c(
 
 
 # Add dates from df_stat, because df_stat_bis has no date column
-eps_hat$date <- tail(df_stat$date, nrow(eps_hat))
-eps_hat$date <- as.Date(eps_hat$date)
 
 eps_hat_7385$date <- tail(df_7385$date, nrow(eps_hat_7385))
 eps_hat_7385$date <- as.Date(eps_hat_7385$date)
@@ -621,16 +555,6 @@ eps_hat_0825$date <- tail(df_0825$date, nrow(eps_hat_0825))
 eps_hat_0825$date <- as.Date(eps_hat_0825$date)
 
 # Annual averages --------------------------------------------------------
-
-eps_hat_annual <- eps_hat %>%
-  mutate(year = lubridate::year(date)) %>%
-  group_by(year) %>%
-  summarise(
-    `Oil supply shock` = mean(`Oil supply shock`, na.rm = TRUE),
-    `Aggregate demand shock` = mean(`Aggregate demand shock`, na.rm = TRUE),
-    `Oil-specific demand shock` = mean(`Oil-specific demand shock`, na.rm = TRUE),
-    .groups = "drop"
-  )
 
 eps_hat_annual_7385 <- eps_hat_7385 %>%
   mutate(year = lubridate::year(date)) %>%
