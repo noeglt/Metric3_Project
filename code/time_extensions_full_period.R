@@ -1,4 +1,3 @@
-setwd("C:/Users/taher/OneDrive/Bureau/econometrics 3")
 install.packages(c(
   "fredr",
   "vars",
@@ -32,7 +31,7 @@ library(Cairo)
 
 #Data loading and basic cleaning-------------------------------------------------------------------------------
 
-fredr_set_key(Sys.getenv("ab808af2bcc04e9a32c684991350a0cb"))
+fredr_set_key(Sys.getenv("FRED_API_KEY"))
 
 kilian = fredr(
   series_id = "IGREA", 
@@ -40,7 +39,7 @@ kilian = fredr(
   observation_end   = as.Date("2026-02-02")
 )
 
-df_clean2 <- read_csv("Crude_prod_TS.csv")
+df_clean2 <- read_csv("data/Crude_prod_TS.csv")
 
 df_clean2 <- df_clean2 |>
   select("...5", "...6")
@@ -59,7 +58,7 @@ df_clean2 <- df_clean2 |>
 df_clean2 <- df_clean2 |>
   rename(prod = value)
 
-price = read.csv("U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
+price = read.csv("data/U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
 
 #LLM helped for the data cleaning
 
@@ -83,7 +82,7 @@ df_main <- left_join(price, kilian, by = "date") |>
   growth_prod = (log(prod) - log(lag(prod)))*100*12) 
 #Multiply by 12 since Kilian uses annualized growth rates 
 
-#Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
+#Now let us deflate the cost by the CPI index to get the real cost of oil
 
 cpi = fredr(
   series_id = "CPIAUCSL",
@@ -267,7 +266,7 @@ plot_panel <- function(shock, response) {
   lines(x, u2, lty = 3)
 }
 
-png("irf_plots.png", width = 900, height = 700, res = 132) #to make it look as R studio output 
+png("irf_plots_full_period.png", width = 900, height = 700, res = 132) #to make it look as R studio output 
 #We may use CairoPNG() instead
 
 par(mfrow = c(3, 3), mar = c(4, 4, 3, 1))
@@ -316,32 +315,8 @@ eps_hat_annual <- eps_hat %>%
 
 # Plot annual structural shocks -----------------------------------------
 
-par(mfrow = c(3, 1), mar = c(3, 4, 3, 1))
 
-plot(eps_hat_annual$year, eps_hat_annual$`Oil supply shock`,
-     type = "l", main = "Oil supply shock",
-     xlab = "", ylab = "")
-
-abline(h = 0, col = "gray")
-
-plot(eps_hat_annual$year, eps_hat_annual$`Aggregate demand shock`,
-     type = "l", main = "Aggregate demand shock",
-     xlab = "", ylab = "")
-
-abline(h = 0, col = "gray")
-
-plot(eps_hat_annual$year, eps_hat_annual$`Oil-specific demand shock`,
-     type = "l", main = "Oil-specific demand shock",
-     xlab = "Year", ylab = "")
-
-abline(h = 0, col = "gray")
-
-par(mfrow = c(1, 1))
-
-# Plot annual structural shocks -----------------------------------------
-
-
-png("structural_shocks.png", width = 900, height = 700, res = 132)
+png("structural_shocks_full_period.png", width = 900, height = 700, res = 132)
 
 par(mfrow = c(3, 1), mar = c(2.5, 4, 2.5, 1), oma = c(1, 0, 0, 0))
 
