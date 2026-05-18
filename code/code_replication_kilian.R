@@ -336,3 +336,5 @@ for (shock in shocks) {
 par(mfrow = c(1, 1))
 
 dev.off()
+
+#Without stationarity, Granger causality and forecast error variance decomposition does not make a lot of sense
