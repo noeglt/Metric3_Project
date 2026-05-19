@@ -1,19 +1,3 @@
-install.packages(c(
-  "fredr",
-  "vars",
-  "tseries",
-  "urca",
-  "ggplot2",
-  "dplyr",
-  "tidyr",
-  "lubridate",
-  "janitor",
-  "readr",
-  "tidyverse",
-  "svars",
-  "Cairo"
-))
-
 library(fredr)       
 library(vars)        
 library(tseries)     
@@ -29,6 +13,8 @@ library(tidyverse)
 library(svars)
 library(Cairo)
 
+#LLMs helped at the margin, mostly for the syntax of complicated functions
+
 #Data loading and basic cleaning-------------------------------------------------------------------------------
 
 fredr_set_key(Sys.getenv("FRED_API_KEY"))
@@ -41,34 +27,23 @@ kilian = fredr(
 
 df_clean2 <- read_csv("data/Crude_prod_TS.csv")
 
-df_clean2 <- df_clean2 |>
-  select("...5", "...6")
-
-df_clean2 <- df_clean2 |>
-  slice(-(1:4))
-
-df_clean2 <- df_clean2 |>
+df_clean2 <- df_clean2 |> #We're basically just renaming the columns and defining clear dates
+  select("...5", "...6")|>
+  slice(-(1:4))|>
   rename(date = "...5", value = "...6") |>
   mutate(
     date = ym(date),
     value = as.numeric(value)
   ) |>
-  arrange(date)
-
-df_clean2 <- df_clean2 |>
+  arrange(date) |>
   rename(prod = value)
 
 
-price = read.csv("data/U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973 
+price = read.csv("U.S._Crude_Oil_Imported_Acquisition_Cost_by_Refiners.csv") #Not from FRED because we extrapolate for 1973
 
-#LLM helped for the data cleaning
-
-
-price = price |>
-  slice(5:n()) |>
-  select(Month = 1, Cost = 2)
-
-price = price |>
+price = price |> #again clearly defining dates
+  slice(5:n()) |> 
+  select(Month = 1, Cost = 2)|>
   mutate(
     Month = myd(paste(Month, "01")), 
     Cost = as.numeric(Cost)
@@ -76,15 +51,14 @@ price = price |>
   arrange(Month) |> 
   rename(date = Month)
 
-df_main <- left_join(price, kilian, by = "date") |>
+df_main <- left_join(price, kilian, by = "date") |> #joining both our datasets
   rename(index = value)  |>
   left_join(df_clean2, by = "date") |>
   select(date, index, prod, Cost) |>
   mutate(
-  growth_prod = (log(prod) - log(lag(prod)))*100*12) 
-#Multiply by 12 since Kilian uses annualized growth rates 
+    growth_prod = (log(prod) - log(lag(prod)))*100*12) #Multiply by 12 since Kilian uses annualized growth rates 
 
-#Now let us deflate the cost by the CPI index to get the real cost of oil (in which year USD?)
+#Now let us deflate the cost by the CPI index to get the real cost of oil
 
 cpi = fredr(
   series_id = "CPIAUCSL",
@@ -95,18 +69,16 @@ cpi <- cpi |>
   select(date, cpi = value)
 
 df_main <- df_main |>
-  left_join(cpi, by = "date")
-
-df_main <- df_main|>
+  left_join(cpi, by = "date")|>
   mutate( real_price = (Cost / cpi)*100,
-  log_real_price = log(real_price))
+          log_real_price = log(real_price))
 
 ggplot(data = df_main, aes(x = date))+
-  geom_line(aes(y = real_price))
+  geom_line(aes(y = log_real_price)) #plotting to make sure it makes sense
 
 
-df_SVAR <- df_main |>
-  select(date, log_real_price, growth_prod, index) |>  
+df_SVAR <- df_main |> 
+  select(date, log_real_price, growth_prod, index) |>  #Keeping only the values of interest
   filter(date < as.Date("2008-01-01")) |> 
   filter(!is.na(growth_prod))
 
@@ -114,13 +86,22 @@ df_SVAR <- df_main |>
 df_SVAR <- df_SVAR |> mutate(index = index * (24.08 / sd(index, na.rm = TRUE)))
 
 
-#Visualize the series-------------------------------------------------------
+#Visualize the series-------------------------------------------------------------------------------------
+
+#Those plots are ugly but it's just to make sure that we have no anomalies
 
 ggplot(data = df_SVAR, aes(x = date))+
   geom_line(aes(y = log_real_price))
 
+ggplot(data = df_SVAR, aes(x = date))+
+  geom_line(aes(y = growth_prod))
+
+ggplot(data = df_SVAR, aes(x = date))+
+  geom_line(aes(y = index))
+
 #Stationarity tests----------------------------------------------------
 
+#Using mainly your code from the tutorial and adapting it
 
 dfbis <- df_SVAR %>% select(!date)
 
@@ -146,6 +127,10 @@ for (j in seq_along(colnames(dfbis))) {               # Loop over 3 variables
 }
 print(ur_tbl)
 
+#Only growth prod is clearly stationary. As we've seen in the office hours
+#We proceed even though we could take differences for the price of oil
+#and not lose much in terms of interpretability
+
 
 # 5. Lag order selection -------------------------------------------------------
 
@@ -153,15 +138,12 @@ lag_sel <- VARselect(dfbis, lag.max = 24, type = "const")
 print(lag_sel$selection)
 print(lag_sel$criteria)
 
+#The order conflicts depend on the tests, between 2 and 3, it's far 
+#from 24 that Kilian chose, but we proceed. We'll discuss it after
+
 # 6. Estimate the VAR ----------------------------------------------------------
 
-p_star <- as.integer(lag_sel$selection["HQ(n)"])
-cat("VAR lag order selected by HQ: p =", p_star, "\n")
-cat("  Other criteria: AIC =", lag_sel$selection["AIC(n)"],
-    ", BIC =", lag_sel$selection["SC(n)"],
-    ", FPE =", lag_sel$selection["FPE(n)"], "\n")
-
-var_fit <- VAR(dfbis, p = 24, type = "const")  # Estimate VAR(p) by OLS
+var_fit <- VAR(dfbis, p = 24, type = "const")  # Estimate VAR(24) by OLS
 summary(var_fit)                                    # Coefficients + res. stats
 
 
@@ -179,11 +161,6 @@ print(sc_test)
 # (c) Normality of residuals (Jarque-Bera multivariate, H0: normal errors)
 nm_test <- normality.test(var_fit, multivariate.only = TRUE)
 print(nm_test$jb.mul)
-
-
-
-
-
 
 
 # 8. Impulse Response Functions ------------------------------------------------
@@ -213,7 +190,7 @@ irf_68_std <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
 irf_95_std <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
                                     n.ahead = H, boot = TRUE, ci = 0.95, runs = 100, cumulative = FALSE))
 
-# 2. Compute Cumulative IRFs (for Production ONLY)
+# 2. Compute Cumulative IRFs (for Production only because we start from growth rates)
 irf_68_cum <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
                                     n.ahead = H, boot = TRUE, ci = 0.68, runs = 100, cumulative = TRUE))
 irf_95_cum <- lapply(vars, \(s) irf(var_ordered, impulse = s, response = vars,
@@ -226,11 +203,11 @@ ylim_fixed <- list(
   growth_prod    = c(-25, 15),
   index          = c(-5,  10),
   log_real_price = c(-7,  12)
-)
+) #setting the scale
 
 plot_panel <- function(shock, response) {
   
-  # Select the correct IRF object based on the response variable
+  # Select the IRF depending on the shocks
   if (response == "growth_prod") {
     obj_68 <- irf_68_cum
     obj_95 <- irf_95_cum
@@ -245,14 +222,14 @@ plot_panel <- function(shock, response) {
   l2 <- obj_95[[shock]]$Lower[[shock]][, response]
   u2 <- obj_95[[shock]]$Upper[[shock]][, response]
   
-  # Supply shock in Kilian = negative production shock
+  # Supply shock are negative ("standardized to have a positive impact on price")
   if (shock == "growth_prod") {
     y  <- -y
     old_l1 <- l1; l1 <- -u1; u1 <- -old_l1
     old_l2 <- l2; l2 <- -u2; u2 <- -old_l2
   }
   
-  # Log price response -> percent response
+  # Log price response -> we already normalized it to be percent response
   if (response == "log_real_price") {
     y  <- 100 * y
     l1 <- 100 * l1
@@ -260,8 +237,6 @@ plot_panel <- function(shock, response) {
     l2 <- 100 * l2
     u2 <- 100 * u2
   }
-  
-  # Notice that the manual cumsum() block has been completely removed.
   
   x <- 0:H
   
@@ -315,7 +290,7 @@ colnames(eps_hat) <- c(
 eps_hat$date <- tail(df_SVAR$date, nrow(eps_hat))
 eps_hat$date <- as.Date(eps_hat$date)
 
-# Annual averages --------------------------------------------------------
+# Taking Annual averages --------------------------------------------------------
 
 eps_hat_annual <- eps_hat %>%
   mutate(year = lubridate::year(date)) %>%
@@ -327,35 +302,7 @@ eps_hat_annual <- eps_hat %>%
     .groups = "drop"
   )
 
-# Plot annual structural shocks -----------------------------------------
-
-par(mfrow = c(3, 1), mar = c(3, 4, 3, 1))
-
-plot(eps_hat_annual$year, eps_hat_annual$`Oil supply shock`,
-     type = "l", main = "Oil supply shock",
-     xlab = "", ylab = "")
-
-abline(h = 0, col = "gray")
-
-plot(eps_hat_annual$year, eps_hat_annual$`Aggregate demand shock`,
-     type = "l", main = "Aggregate demand shock",
-     xlab = "", ylab = "")
-
-abline(h = 0, col = "gray")
-
-plot(eps_hat_annual$year, eps_hat_annual$`Oil-specific demand shock`,
-     type = "l", main = "Oil-specific demand shock",
-     xlab = "Year", ylab = "")
-
-abline(h = 0, col = "gray")
-
-par(mfrow = c(1, 1))
-
-
-
-
-
-# Plot annual structural shocks -----------------------------------------
+# And then plotting the annual structural shocks -----------------------------------------
 
 
 png("structural_shocks.png", width = 900, height = 700, res = 132)
@@ -381,7 +328,7 @@ for (shock in shocks) {
        las  = 1,                    # horizontal y-axis labels
        tcl  = -0.3,                 # shorter tick marks
        mgp  = c(2, 0.5, 0))        # tighten axis label spacing
-
+  
   abline(h = 0, col = "gray", lwd = 0.8)   # gray zero line behind data
   lines(eps_hat_annual$year, eps_hat_annual[[shock]], lwd = 1)
 }
@@ -389,3 +336,5 @@ for (shock in shocks) {
 par(mfrow = c(1, 1))
 
 dev.off()
+
+#Without stationarity, Granger causality and forecast error variance decomposition does not make a lot of sense
