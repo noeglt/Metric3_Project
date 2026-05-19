@@ -254,7 +254,7 @@ plot_panel <- function(shock, response) {
   lines(x, u2, lty = 3)
 }
 
-png("irf_plots.png", width = 900, height = 700, res = 132) #to make it look as R studio output 
+png("output/irf_plots.png", width = 900, height = 700, res = 132) #to make it look as R studio output 
 #We may use CairoPNG() instead
 
 par(mfrow = c(3, 3), mar = c(4, 4, 3, 1))
@@ -305,7 +305,7 @@ eps_hat_annual <- eps_hat %>%
 # And then plotting the annual structural shocks -----------------------------------------
 
 
-png("structural_shocks.png", width = 900, height = 700, res = 132)
+png("output/structural_shocks.png", width = 900, height = 700, res = 132)
 
 par(mfrow = c(3, 1), mar = c(2.5, 4, 2.5, 1), oma = c(1, 0, 0, 0))
 
